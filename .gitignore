@@ -24,14 +24,12 @@ env/
 .ipynb_checkpoints/
 
 # ML / Data
-*.pkl
-*.joblib
 *.h5
 *.hdf5
 *.pb
 *.onnx
 data/raw/
-data/processed/
+# data/processed/ is tracked (contains cleaned + NLP-enhanced data)
 
 # Environment & Config
 .env
