@@ -113,10 +113,34 @@ if "lang" not in st.session_state:
 
 # ── 路径 ──────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DB_URL = f"sqlite:///{PROJECT_ROOT / 'database' / 'churn_intelligence.db'}"
+DB_PATH = PROJECT_ROOT / "database" / "churn_intelligence.db"
+DB_URL = f"sqlite:///{DB_PATH}"
 FIGURES_DIR = PROJECT_ROOT / "reports" / "figures"
 
+# ── 启动诊断 ──────────────────────────────────────────────────────
+_startup_ok = True
+_startup_msgs = []
+
+if not DB_PATH.exists():
+    _startup_ok = False
+    _startup_msgs.append(f"⚠️ Database not found: {DB_PATH}")
+
+if not FIGURES_DIR.exists():
+    _startup_ok = False
+    _startup_msgs.append(f"⚠️ Figures dir not found: {FIGURES_DIR}")
+else:
+    png_count = len(list(FIGURES_DIR.glob("*.png")))
+    html_count = len(list(FIGURES_DIR.glob("*.html")))
+    _startup_msgs.append(f"📁 Figures: {png_count} PNG + {html_count} HTML found")
+
 engine = create_engine(DB_URL, echo=False)
+try:
+    with engine.connect() as _conn:
+        _conn.execute(text("SELECT 1"))
+    _startup_msgs.append("🗄️ Database: connected")
+except Exception as _e:
+    _startup_ok = False
+    _startup_msgs.append(f"⚠️ Database error: {_e}")
 
 
 @st.cache_data(ttl=300)
@@ -147,14 +171,23 @@ df = load_data()
 
 # ── 侧边栏 ────────────────────────────────────────────────────────
 with st.sidebar:
-    # 语言切换（中文在前）
+    # 语言切换
     lang_options = {"🇨🇳 中文": "zh", "🇬🇧 English": "en"}
     selected_label = st.selectbox(
         "语言 / Language",
         options=list(lang_options.keys()),
-        index=0,  # 中文优先
+        index=0,
     )
     st.session_state.lang = lang_options[selected_label]
+
+    # 启动状态
+    with st.expander("🔧 系统状态 / System Status", expanded=not _startup_ok):
+        for msg in _startup_msgs:
+            st.caption(msg)
+        if _startup_ok:
+            st.success("✅ 系统就绪 / System Ready" if st.session_state.lang == "zh" else "✅ System Ready")
+        else:
+            st.error("❌ 存在异常 / Issues Detected")
 
     st.markdown("---")
 
@@ -314,27 +347,43 @@ with tab3:
     st.subheader(t("shap_title"))
     st.markdown(t("shap_desc"))
 
-    shap_files = {
-        "Summary Plot (Beeswarm)": "shap_summary.png",
-        "Bar Plot (Importance)": "shap_bar.png",
-        "Waterfall (Single Example)": "shap_waterfall.png",
-        "Dependence Plot": "shap_dependence.png",
-    }
+    shap_files = [
+        ("Summary Plot", "shap_summary.png"),
+        ("Bar Plot (Importance)", "shap_bar.png"),
+        ("Waterfall (Single Example)", "shap_waterfall.png"),
+        ("Dependence Plot", "shap_dependence.png"),
+    ]
 
-    col1, col2 = st.columns(2)
-    items = list(shap_files.items())
-    for i, (title, filename) in enumerate(items):
+    # SHAP 图片展示
+    found_any = False
+    for title, filename in shap_files:
         path = FIGURES_DIR / filename
-        with (col1 if i % 2 == 0 else col2):
-            if path.exists():
-                st.image(str(path), caption=title, use_container_width=True)
-            else:
-                st.warning(f"Chart not found: {filename}")
+        if path.exists():
+            st.image(str(path), caption=title, use_container_width=True)
+            found_any = True
 
+    if not found_any:
+        st.warning(
+            "SHAP 图表未找到。请在本地运行 `python -m src.api.shap_viz` 生成图表后重新部署。"
+            if st.session_state.lang == "zh"
+            else "SHAP charts not found. Run `python -m src.api.shap_viz` locally and redeploy."
+        )
+        # 展示静态占位示例
+        st.info(
+            "📊 预期图表：Summary Plot · Bar Plot · Waterfall · Dependence Plot · Force Plot"
+        )
+
+    # Force Plot HTML
     force_path = FIGURES_DIR / "shap_force.html"
     if force_path.exists():
         with open(force_path, "r", encoding="utf-8") as f:
             st.components.v1.html(f.read(), height=450, scrolling=True)
+    else:
+        st.info(
+            "Force Plot 交互图未找到。运行 `python -m src.api.shap_viz` 生成。"
+            if st.session_state.lang == "zh"
+            else "Interactive Force Plot not found. Run `python -m src.api.shap_viz`."
+        )
 
     st.subheader(t("shap_feature_table"))
     st.markdown("""
