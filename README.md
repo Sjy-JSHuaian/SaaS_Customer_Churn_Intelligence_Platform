@@ -412,5 +412,3 @@ pymysql>=1.1   sqlalchemy>=2.0   joblib>=1.4
 ---
 
 **Built with FastAPI · XGBoost · SHAP · Streamlit · TextBlob**
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
